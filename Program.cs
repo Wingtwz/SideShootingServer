@@ -71,7 +71,7 @@ namespace ServidorSS
         private static void NewClient(object socket)
         {
             bool disconnect = false;
-            string message = "";
+            string message;
             Socket client = (Socket)socket;
             IPEndPoint epCliente = (IPEndPoint)client.RemoteEndPoint;
             Log.Information("Cliente {Address}:{Port} conectado", epCliente.Address, epCliente.Port);
@@ -99,12 +99,23 @@ namespace ServidorSS
                 try
                 {
                     message = sr.ReadLine();
-                    //Log.Information($"{epCliente.Address}:{epCliente.Port} envía: {message}");
+                    Log.Information($"{epCliente.Address}:{epCliente.Port} envía: {message}");
                     if (message != null)
                     {
                         if (message == "SALIR")
                         {
                             disconnect = true;
+                        }
+                        else if (message.Split(' ')[0] == "LOCATION")
+                        {
+                            foreach (StreamWriter swClient in swClients)
+                            {
+                                if (sw != swClient)
+                                {
+                                    swClient.WriteLine(message);
+                                    swClient.Flush();
+                                }
+                            }
                         }
                     }
                     else
