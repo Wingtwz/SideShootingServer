@@ -9,6 +9,8 @@ namespace ServidorSS
 {
     class Program
     {
+        private const int MaxConnections = 2;
+
         private static readonly object l = new object();
         private static bool end = false;
         private static List<StreamWriter> swClients = new List<StreamWriter>();
@@ -53,8 +55,15 @@ namespace ServidorSS
                     try
                     {
                         Socket client = s.Accept();
-                        Thread thread = new Thread(NewClient);
-                        thread.Start(client);
+                        if (swClients.Count >= MaxConnections)
+                        {
+                            client.Close();
+                        }
+                        else
+                        {
+                            Thread thread = new Thread(NewClient);
+                            thread.Start(client);
+                        }
                     }
                     catch (SocketException ex) when (ex.ErrorCode == 10004)
                     {
@@ -99,7 +108,7 @@ namespace ServidorSS
                 try
                 {
                     message = sr.ReadLine();
-                    Log.Information($"{epCliente.Address}:{epCliente.Port} envía: {message}");
+                    //Log.Information($"{epCliente.Address}:{epCliente.Port} envía: {message}");
                     if (message != null)
                     {
                         if (message == "SALIR")
