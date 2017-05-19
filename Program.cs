@@ -115,7 +115,7 @@ namespace ServidorSS
                         {
                             disconnect = true;
                         }
-                        else if (message.Split(' ')[0] == "LOCATION")
+                        else// if (message.Split(' ')[0] == "LOCATION")
                         {
                             foreach (StreamWriter swClient in swClients)
                             {
