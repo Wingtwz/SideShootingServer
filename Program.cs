@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -7,19 +8,41 @@ using Serilog;
 
 namespace ServidorSS
 {
+    /// <summary>
+    /// Servidor que gestiona las conexiones asociadas al juego SideShooting
+    /// </summary>
     class Program
     {
+        /// <summary>
+        /// Número máximo de clientes conectados simultáneamente
+        /// </summary>
         private const int MaxConnections = 2;
 
-        private static readonly object l = new object();
-        private static bool end = false;
-        private static List<StreamWriter> swClients = new List<StreamWriter>();
+        /// <summary>
+        /// Objeto para evitar errores de concurrencia
+        /// </summary>
+        private static readonly object l = new object ();
+        /// <summary>
+        /// Indica si el servidor debe cerrarse
+        /// </summary>
+        private static bool end;
+        /// <summary>
+        /// Colección para la comunicación con los clientes conectados
+        /// </summary>
+        private static List<StreamWriter> swClients;
 
+        /// <summary>
+        /// Método principal de arranque del servidor
+        /// </summary>
+        /// <param name="args">Argumentos pasados para su inicio, no usados</param>
         static void Main(string[] args)
         {
+            Console.Title = "Servidor SideShooting";
             int[] ports = { 31416, 31417 };
             Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             IPEndPoint ep = null;
+            swClients = new List<StreamWriter>();
+            end = false;
 
             Log.Logger = new LoggerConfiguration()
                 .WriteTo.ColoredConsole()
@@ -77,9 +100,13 @@ namespace ServidorSS
             }
         }
 
+        /// <summary>
+        /// Gestiona el intercambio de conexión con un cliente conectado al servidor
+        /// </summary>
+        /// <param name="socket"><see cref="Socket"/> de la conexión de un cliente</param>
         private static void NewClient(object socket)
         {
-            bool disconnect = false;
+            bool disconnect = false, gameReady;
             string message;
             Socket client = (Socket)socket;
             IPEndPoint epCliente = (IPEndPoint)client.RemoteEndPoint;
@@ -103,6 +130,26 @@ namespace ServidorSS
 
             Log.Information($"Conectados {swClients.Count} clientes");
 
+            gameReady = swClients.Count > 1;
+
+            sw.WriteLine(gameReady ? "READY" : "WAIT");
+            sw.Flush();
+
+            if (gameReady)
+            {
+                lock (l)
+                {
+                    foreach (StreamWriter swClient in swClients)
+                    {
+                        if (sw != swClient)
+                        {
+                            swClient.WriteLine("GO");
+                            swClient.Flush();
+                        }
+                    }
+                }
+            }
+
             while (!disconnect)
             {
                 try
@@ -117,12 +164,15 @@ namespace ServidorSS
                         }
                         else// if (message.Split(' ')[0] == "LOCATION")
                         {
-                            foreach (StreamWriter swClient in swClients)
+                            lock (l)
                             {
-                                if (sw != swClient)
+                                foreach (StreamWriter swClient in swClients)
                                 {
-                                    swClient.WriteLine(message);
-                                    swClient.Flush();
+                                    if (sw != swClient)
+                                    {
+                                        swClient.WriteLine(message);
+                                        swClient.Flush();
+                                    }
                                 }
                             }
                         }
@@ -130,8 +180,32 @@ namespace ServidorSS
                     else
                         break;
                 }
-                catch (IOException)
+                catch (IOException ex)
                 {
+                    Log.Error(ex.Message);
+                    lock (l)
+                    {
+                        foreach (StreamWriter swClient in swClients)
+                        {
+                            try
+                            {
+                                if (sw != swClient)
+                                {
+                                    swClient.WriteLine("VICTORY");
+                                    swClient.Flush();
+                                }
+                            }
+                            catch (IOException)
+                            {
+                                //Simplemente que pase al siguiente
+                            }
+                        }
+                    }
+                    break;
+                }
+                catch (Exception ex) when (ex is ObjectDisposedException)
+                {
+                    Log.Error(ex.Message);
                     break;
                 }
             }
